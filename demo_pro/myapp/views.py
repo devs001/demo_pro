@@ -4,10 +4,12 @@ from django.shortcuts import render
 
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework.views import APIView
+
 from .models import Plan, Subscription, Invoice
 from .serializers import (
     PlanSerializer,
@@ -104,6 +106,15 @@ class UserInvoicesView(generics.ListAPIView):
 
     def get_queryset(self):
         return Invoice.objects.filter(user=self.request.user)
+
+class WebhookView(APIView):
+    """webhook from trading"""
+    permission_classes = [AllowAny]
+    authentication_classes = []  # disables session/token auth checks
+
+    def get(self, request):
+        print(f"Query params: {request.query_params}")
+        return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
