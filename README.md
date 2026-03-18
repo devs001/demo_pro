@@ -70,9 +70,14 @@ python manage.py createsuperuser
 ```
 
 ### Step 6: Create Sample Data
-```bash
-python manage.py create_sample_data
-```
+create samle data from this 
+'''
+plans_data = [
+            {'name': 'basic', 'price': 9.99, 'features': 'Basic features, 5GB storage'},
+            {'name': 'pro', 'price': 19.99, 'features': 'Pro features, 50GB storage, Priority support'},
+            {'name': 'enterprise', 'price': 49.99, 'features': 'Enterprise features, Unlimited storage, 24/7 support'},
+        ]
+'''
 
 ## 🏃‍♂️ Running the Application
 
@@ -178,7 +183,7 @@ POST /api/invoices/{invoice_id}/pay/
 - **create_invoice_for_subscription**: Create invoice for specific subscription
 - **send_payment_reminder**: Send payment reminder for overdue invoices
 
-## 💳 Stripe Integration
+##  Stripe Integration
 
 The system includes real Stripe integration for payment processing:
 
