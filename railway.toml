@@ -1,2 +1,2 @@
 [deploy]
-startCommand = "gunicorn demo_test.wsgi --bind 0.0.0.0:$PORT"
+startCommand = "gunicorn demo_pro.wsgi --bind 0.0.0.0:$PORT"
