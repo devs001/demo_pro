@@ -17,7 +17,8 @@ from .serializers import (
     SubscriptionCreateSerializer,
     InvoiceSerializer
 )
-from .tasks import create_invoice_for_subscription
+from .tasks import create_invoice_for_subscription, verify_webhook, log, get_open_position, place_market_order, \
+    place_sl_with_retry, QUANTITY
 import stripe
 from django.conf import settings
 
@@ -114,7 +115,60 @@ class WebhookView(APIView):
 
     def get(self, request):
         print(f"Query params: {request.query_params}")
-        return Response({"status": "success"}, status=status.HTTP_200_OK)
+        if not verify_webhook(request):
+            return Response({"error": "Unauthorized"}), 401
+
+        data        = request.data
+        signal_type = data.get("type")
+
+        log.info(f"Signal received: {data}")
+
+        # ----------------------------------------------------------
+        # ENTRY SIGNAL
+        # ----------------------------------------------------------
+        if signal_type == "entry":
+            side = data.get("side")  # "buy" ya "sell"
+
+            # One trade rule
+            if get_open_position():
+                log.info("Entry ignored — position already open")
+                return Response({"status": "ignored", "reason": "position already open"})
+
+            # Market order
+            order_result = place_market_order(side, QUANTITY)
+
+            if not order_result.get("success"):
+                log.error(f"Entry order failed: {order_result}")
+                return Response({"status": "failed", "reason": "entry order failed"}), 500
+
+            # Average fill price
+            avg_fill_price = float(order_result["result"]["average_fill_price"])
+            log.info(f"Entry filled @ avg price: {avg_fill_price}")
+
+            # SL lagao
+            place_sl_with_retry(side, avg_fill_price)
+
+            return Response({"status": "ok", "fill_price": avg_fill_price})
+
+        # ----------------------------------------------------------
+        # EXIT SIGNAL
+        # ----------------------------------------------------------
+        elif signal_type == "exit":
+            position = get_open_position()
+
+            if not position:
+                log.info("Exit signal — no open position, skipping")
+                return Response({"status": "skipped", "reason": "no open position"})
+
+            close_side = "sell" if float(position["size"]) > 0 else "buy"
+            result     = place_market_order(close_side, QUANTITY)
+            log.info(f"Position closed: {result}")
+
+            return Response({"status": "closed"})
+
+        else:
+            log.warning(f"Unknown signal type: {signal_type}")
+            return Response({"error": "Unknown signal type"}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
