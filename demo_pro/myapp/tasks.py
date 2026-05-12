@@ -253,6 +253,7 @@ def sl_exists():
 # Place Market Order
 # ============================================================
 def place_market_order(side, size):
+    log.info(f"placing order {side} and {size}")
     endpoint = "/v2/orders"
     payload  = json.dumps({
         "product_id" : PRODUCT_ID,
@@ -261,11 +262,11 @@ def place_market_order(side, size):
         "size"       : size
     })
     headers = get_headers("POST", endpoint, payload)
-
+    log.info(f"placing order BASE_URL + endpoint {BASE_URL + endpoint} headers {headers} payload {payload}")
     try:
         res    = requests.post(BASE_URL + endpoint, data=payload, headers=headers, timeout=10)
         result = res.json()
-        log.info(f"Market order | {side} {size} lots | Response: {result}")
+        log.info(f"Market order - {side} {size} lots - Response: {result}")
         return result
     except Exception as e:
         log.error(f"Market order exception: {e}")
