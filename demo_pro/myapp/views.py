@@ -113,10 +113,10 @@ class WebhookView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []  # disables session/token auth checks
 
-    def get(self, request):
+    def post(self, request):
         print(f"Query params: {request.query_params}")
         if not verify_webhook(request):
-            return Response({"error": "Unauthorized"}), 401
+            return Response({"error": "Unauthorized"})
 
         data        = request.data
         signal_type = data.get("type")
@@ -169,6 +169,7 @@ class WebhookView(APIView):
         else:
             log.warning(f"Unknown signal type: {signal_type}")
             return Response({"error": "Unknown signal type"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Unknown signal type"}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
