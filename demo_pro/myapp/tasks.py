@@ -361,7 +361,7 @@ def startup_check():
 def verify_webhook(req):
     token = req.headers.get("X-Webhook-Secret")
     if token != WEBHOOK_SECRET:
-        log.warning("Unauthorized webhook — wrong or missing secret")
+        log.warning(f"Unauthorized webhook — wrong or missing secret token {token} WEBHOOK_SECRET {WEBHOOK_SECRET}")
         return False
     return True
 
