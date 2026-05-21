@@ -1,3 +1,5 @@
+import os
+
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
@@ -128,7 +130,11 @@ import logging
 
 
 
-import os  # Add this import at the top
+from dotenv import load_dotenv
+
+# This loads the .env file if you are running locally.
+# On Railway, it safely ignores this and uses the dashboard variables.
+load_dotenv()
 
 # ============================================================
 # CONFIG — Now pulling from Railway Environment Variables
