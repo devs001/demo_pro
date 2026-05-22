@@ -297,12 +297,13 @@ def place_sl_order(entry_side, sl_price):
     sl_side  = "sell" if entry_side == "buy" else "buy"
     endpoint = "/v2/orders"
     payload  = json.dumps({
-        "product_id"  : PRODUCT_ID,
-        "order_type"  : "stop_market_order",
-        "side"        : sl_side,
-        "size"        : QUANTITY,
-        "stop_price"  : sl_price,
-        "reduce_only" : True
+        "product_id"      : PRODUCT_ID,
+        "order_type"      : "market_order",         # FIXED: Must be 'market_order'
+        "stop_order_type" : "stop_loss_order",      # ADDED: This makes it a Stop Loss
+        "side"            : sl_side,
+        "size"            : QUANTITY,
+        "stop_price"      : str(sl_price),          # Cast to string to prevent JSON float issues
+        "reduce_only"     : True
     })
     headers = get_headers("POST", endpoint, payload)
 
