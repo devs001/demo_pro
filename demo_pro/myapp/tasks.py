@@ -287,7 +287,7 @@ def cancel_all_orders(product_id=PRODUCT_ID):
     Cancels all open orders (including stop-losses) for the specified product.
     """
     # The query string to target only open orders for our specific coin
-    query_string = f"?product_id={product_id}&state=open"
+    query_string = f"?product_id={product_id}&state=open,pending"
     endpoint = "/v2/orders/all"
     full_endpoint = endpoint + query_string
     log.info(f" cancel all orders endpoint_full {full_endpoint} ")
