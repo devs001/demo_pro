@@ -422,7 +422,85 @@ def verify_webhook(req):
     return True
 
 
+def get_pending_stop_orders(product_id=PRODUCT_ID):
+    """
+    Fetches all open, pending, or untriggered orders for a specific product.
+    """
+    # 1. Base endpoint for signature
+    base_endpoint = "/v2/orders"
 
+    # 2. Full URL (Notice we ask for all 3 states just to be safe)
+    full_url_path = f"{base_endpoint}?product_id={product_id}&state=open,pending,untriggered"
+
+    headers = get_headers("GET", base_endpoint)
+
+    try:
+        res = requests.get(BASE_URL + full_url_path, headers=headers, timeout=10)
+        data = res.json()
+
+        if data.get("success"):
+            orders = data.get("result", [])
+            if orders:
+                log.info(f"Found {len(orders)} pending orders to cancel.")
+            else:
+                log.info("No pending orders found.")
+            return orders
+        else:
+            log.error(f"Failed to fetch orders: {data}")
+            return []
+
+    except Exception as e:
+        log.error(f"Exception checking for orders: {e}")
+        return []
+
+
+def cancel_all_orders_order_id(product_id=PRODUCT_ID):
+    """
+    Guaranteed cancellation: Finds every specific order ID and deletes them one by one.
+    """
+    log.info(f"Initiating full sweep of all orders for {product_id}...")
+
+    # Step 1: Find all the stubborn orders
+    pending_orders = get_pending_stop_orders(product_id)
+
+    if not pending_orders:
+        log.info("Order book is already clean.")
+        return True
+
+    all_successful = True
+
+    # Step 2: Loop through and kill them by ID
+    for order in pending_orders:
+        order_id = order.get("id")
+
+        if not order_id:
+            continue
+
+        log.info(f"Targeting specific order ID: {order_id}...")
+
+        # Base endpoint for signature
+        base_endpoint = "/v2/orders"
+
+        # We pass the specific order ID to delete it
+        full_url_path = f"{base_endpoint}?id={order_id}&product_id={product_id}"
+
+        headers = get_headers("DELETE", base_endpoint)
+
+        try:
+            res = requests.delete(BASE_URL + full_url_path, headers=headers, timeout=10)
+            data = res.json()
+
+            if data.get("success"):
+                log.info(f"Successfully killed order ID {order_id}")
+            else:
+                log.error(f"Failed to kill order ID {order_id}: {data}")
+                all_successful = False
+
+        except Exception as e:
+            log.error(f"Exception killing order {order_id}: {e}")
+            all_successful = False
+
+    return all_successful
 
 
 
