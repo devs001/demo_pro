@@ -292,7 +292,7 @@ def cancel_all_orders(product_id=PRODUCT_ID):
     full_endpoint = endpoint + query_string
     log.info(f" cancel all orders endpoint_full {full_endpoint} ")
     # We use a DELETE request for this action
-    headers = get_headers("DELETE", full_endpoint)
+    headers = get_headers("DELETE", endpoint)
 
     log.info(f"Attempting to cancel all open orders for {product_id}...")
 
