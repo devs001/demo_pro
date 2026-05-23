@@ -428,11 +428,11 @@ def get_pending_stop_orders(product_id=PRODUCT_ID):
     """
     # 1. Base endpoint for signature
     base_endpoint = "/v2/orders"
-
+    headers = get_headers("GET", base_endpoint)
     # 2. Full URL (Notice we ask for all 3 states just to be safe)
     full_url_path = f"{base_endpoint}?product_id={product_id}&state=open,pending,untriggered"
 
-    headers = get_headers("GET", base_endpoint)
+
 
     try:
         res = requests.get(BASE_URL + full_url_path, headers=headers, timeout=10)
