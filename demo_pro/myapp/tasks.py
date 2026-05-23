@@ -282,6 +282,35 @@ def place_market_order(side, size):
         return {"success": False}
 
 
+def cancel_all_orders(product_id=PRODUCT_ID):
+    """
+    Cancels all open orders (including stop-losses) for the specified product.
+    """
+    # The query string to target only open orders for our specific coin
+    query_string = f"?product_id={product_id}&state=open"
+    endpoint = "/v2/orders"
+    full_endpoint = endpoint + query_string
+
+    # We use a DELETE request for this action
+    headers = get_headers("DELETE", full_endpoint)
+
+    log.info(f"Attempting to cancel all open orders for {product_id}...")
+
+    try:
+        res = requests.delete(BASE_URL + full_endpoint, headers=headers, timeout=10)
+        data = res.json()
+
+        if data.get("success"):
+            log.info(f"Successfully cancelled orders: {data}")
+            return True
+        else:
+            log.error(f"Failed to cancel orders. API Response: {data}")
+            return False
+
+    except Exception as e:
+        log.error(f"Exception during order cancellation: {e}")
+        return False
+
 # ============================================================
 # SL Price Calculate
 # ============================================================

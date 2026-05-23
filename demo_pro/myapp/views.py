@@ -21,7 +21,7 @@ from .serializers import (
     InvoiceSerializer
 )
 from .tasks import create_invoice_for_subscription, verify_webhook, log, get_open_position, place_market_order, \
-    place_sl_with_retry, QUANTITY
+    place_sl_with_retry, QUANTITY, cancel_all_orders
 import stripe
 from django.conf import settings
 
@@ -165,7 +165,8 @@ class WebhookView(APIView):
 
                 close_side = "sell" if float(position["size"]) > 0 else "buy"
                 result     = place_market_order(close_side, QUANTITY)
-                log.info(f"Position closed: {result}")
+                can_res=cancel_all_orders()
+                log.info(f"Position closed: {result} cancel res {can_res}")
 
                 return Response({"status": "closed"})
 
