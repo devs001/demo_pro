@@ -218,7 +218,9 @@ def set_leverage():
 # Open Position Check
 # ============================================================
 def get_open_position():
+    query_string = f"?product_id={PRODUCT_ID}"
     endpoint = "/v2/positions"
+    endpoint = endpoint + query_string
     headers  = get_headers("GET", endpoint)
     log.info(" checking any open position")
     try:
