@@ -224,7 +224,7 @@ def get_open_position():
     try:
         res       = requests.get(BASE_URL + endpoint, headers=headers, timeout=10)
         positions = res.json().get("result", [])
-        log.info(f"position found for {PRODUCT_ID} is {positions}")
+        log.info(f"position found for {PRODUCT_ID} is {positions} and all data {res.json()}")
         for pos in positions:
             if pos["product_id"] == PRODUCT_ID and float(pos["size"]) != 0:
                 return pos
