@@ -220,17 +220,17 @@ def set_leverage():
 def get_open_position():
     endpoint = "/v2/positions"
     headers  = get_headers("GET", endpoint)
-
+    log.info(" checking any open position")
     try:
         res       = requests.get(BASE_URL + endpoint, headers=headers, timeout=10)
         positions = res.json().get("result", [])
-
+        log.info(f"position found for {PRODUCT_ID} is {positions}")
         for pos in positions:
             if pos["product_id"] == PRODUCT_ID and float(pos["size"]) != 0:
                 return pos
     except Exception as e:
         log.error(f"Position check exception: {e}")
-
+    log.info(" found none position retuing none")
     return None
 
 
@@ -289,6 +289,23 @@ def calculate_sl_price(avg_fill_price, side):
     else:
         return round(avg_fill_price + sl_distance, 4)
 
+
+def stop_loss_in_percent(entry_price,entry_side,sl_percent=1.0):
+
+    if entry_side == "buy":
+        # Math: Price drops by 2%
+        # 1.3567 * (1 - 0.02) = 1.3295
+        raw_sl_price = entry_price * (1 - (sl_percent / 100))
+        sl_side = "sell" # To close a buy, we must sell
+
+    elif entry_side == "sell":
+        # Math: Price goes up by 2% (for short selling)
+        raw_sl_price = entry_price * (1 + (sl_percent / 100))
+        sl_side = "buy"
+
+    # Round it to 4 decimal places so the exchange accepts it
+    sl_price = round(raw_sl_price, 4)
+    return sl_price
 
 # ============================================================
 # Place Stop-Market SL Order
