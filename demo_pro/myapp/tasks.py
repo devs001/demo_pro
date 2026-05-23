@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from celery import shared_task
 from django.utils import timezone
@@ -227,11 +228,11 @@ def get_open_position():
         res       = requests.get(BASE_URL + endpoint, headers=headers, timeout=10)
         positions = res.json().get("result", [])
         log.info(f"position found for {PRODUCT_ID} is {positions} and all data {res.json()}")
-        for pos in positions:
-            if pos["product_id"] == PRODUCT_ID and float(pos["size"]) != 0:
-                return pos
+        if float(positions["size"]) != 0:
+            log.info(f" returning position found {positions}")
+            return positions
     except Exception as e:
-        log.error(f"Position check exception: {e}")
+        log.error(f"Position check exception: {e} {traceback.format_exc()}")
     log.info(" found none position retuing none")
     return None
 
