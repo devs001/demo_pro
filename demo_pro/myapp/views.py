@@ -128,30 +128,49 @@ class WebhookView(APIView):
 
             # ----------------------------------------------------------
             # ENTRY SIGNAL
+            # Rules:
+            # 1/2 — same side already open → ignore duplicate entry
+            # 3/4 — opposite side open → close existing, then flip entry
             # ----------------------------------------------------------
             if signal_type == "entry":
                 side = data.get("side")  # "buy" ya "sell"
+                if side not in ("buy", "sell"):
+                    return Response(
+                        {"error": "Invalid side — must be 'buy' or 'sell'"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-                # One trade rule
-                if get_open_position():
-                    log.info("Entry ignored — position already open")
-                    return Response({"status": "ignored", "reason": "position already open"})
+                position = get_open_position()
+                if position:
+                    current_side = "buy" if float(position["size"]) > 0 else "sell"
 
-                # Market order
+                    if current_side == side:
+                        log.info(f"Duplicate {side} entry ignored — position already open")
+                        return Response({"status": "ignored", "reason": f"already in {side}"})
+
+                    log.info(f"Flip: closing {current_side} before opening {side}")
+                    cancel_all_orders_order_id()
+                    close_side = "sell" if current_side == "buy" else "buy"
+                    close_result = place_market_order(close_side, QUANTITY)
+
+                    if not close_result.get("success"):
+                        log.error(f"Flip close failed: {close_result}")
+                        return Response(
+                            {"status": "failed", "reason": f"close failed before flip {close_result}"},
+                        )
+
                 order_result = place_market_order(side, QUANTITY)
 
                 if not order_result.get("success"):
                     log.error(f"Entry order failed: {order_result}")
                     return Response({"status": "failed", "reason": f"entry order failed {order_result}"})
 
-                # Average fill price
                 avg_fill_price = float(order_result["result"]["average_fill_price"])
                 log.info(f"Entry filled @ avg price: {avg_fill_price}")
 
-                # SL lagao
                 place_sl_with_retry(side, avg_fill_price)
 
-                return Response({"status": "ok", "fill_price": avg_fill_price})
+                return Response({"status": "ok", "fill_price": avg_fill_price, "side": side})
 
             # ----------------------------------------------------------
             # EXIT SIGNAL
