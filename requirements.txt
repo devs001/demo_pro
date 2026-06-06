@@ -11,3 +11,4 @@ djangorestframework
 gunicorn
 python-dotenv
 whitenoise
+requests
