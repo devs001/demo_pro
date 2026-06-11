@@ -11,7 +11,7 @@ Environment variables:
   SL_PIPS                  — stop distance in pips when SL_PERCENT unset (default: 25)
   PIP_VALUE                — price per pip (default: 0.0001)
   SL_PERCENT               — if > 0, SL distance as % of entry instead of pips
-  EXCHANGE_BROKER          — set via broker.py; not read here directly
+  BINANCE_MARGIN_TYPE      — cross (default) or isolated
 
 Optional:
   BINANCE_BASE_URL         — override API base (default: https://fapi.binance.com)
@@ -25,12 +25,28 @@ import logging
 import os
 import time
 import traceback
+from pathlib import Path
 from urllib.parse import urlencode
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _load_env_files():
+    app_dir = Path(__file__).resolve().parent
+    for env_path in (
+        app_dir.parent.parent / ".env",
+        app_dir.parent / ".env",
+        Path.cwd() / ".env",
+    ):
+        if env_path.is_file():
+            load_dotenv(env_path)
+            return str(env_path)
+    load_dotenv()
+    return None
+
+
+ENV_FILE = _load_env_files()
 
 API_KEY = os.environ.get("BINANCE_API_KEY")
 API_SECRET = os.environ.get("BINANCE_API_SECRET")
@@ -46,6 +62,7 @@ SL_PERCENT = float(os.environ.get("SL_PERCENT", "0") or "0")
 
 BASE_URL = os.environ.get("BINANCE_BASE_URL", "https://fapi.binance.com")
 RECV_WINDOW = int(os.environ.get("BINANCE_RECV_WINDOW", "5000"))
+MARGIN_TYPE = os.environ.get("BINANCE_MARGIN_TYPE", "cross").strip().lower()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,6 +89,9 @@ def _sign_params(params):
 
 
 def _request(method, endpoint, params=None):
+    if not API_KEY or not API_SECRET:
+        log.error("BINANCE_API_KEY or BINANCE_API_SECRET not configured")
+        return {"success": False, "error": "Missing API credentials"}
     params = dict(params or {})
     params["timestamp"] = int(time.time() * 1000)
     params["recvWindow"] = RECV_WINDOW
@@ -143,6 +163,72 @@ def _format_quantity(qty):
     return f"{rounded:.{precision}f}"
 
 
+def get_mark_price():
+    try:
+        res = requests.get(
+            f"{BASE_URL}/fapi/v1/premiumIndex",
+            params={"symbol": SYMBOL},
+            timeout=10,
+        )
+        res.raise_for_status()
+        return float(res.json()["markPrice"])
+    except Exception as exc:
+        log.warning(f"Could not fetch mark price: {exc}")
+        return None
+
+
+def get_usdt_balance():
+    result = _request("GET", "/fapi/v2/balance", {})
+    if not result.get("success"):
+        return None
+
+    for asset in result["result"]:
+        if asset.get("asset") == "USDT":
+            return {
+                "wallet": float(asset.get("balance", 0)),
+                "available": float(asset.get("availableBalance", 0)),
+            }
+    return {"wallet": 0.0, "available": 0.0}
+
+
+def get_symbol_margin_info():
+    result = _request("GET", "/fapi/v2/positionRisk", {"symbol": SYMBOL})
+    if not result.get("success"):
+        return None
+
+    positions = result["result"]
+    if isinstance(positions, dict):
+        positions = [positions]
+
+    for pos in positions:
+        if pos.get("symbol") == SYMBOL:
+            return {
+                "leverage": int(pos.get("leverage", 0)),
+                "margin_type": pos.get("marginType", "unknown"),
+                "isolated_wallet": float(pos.get("isolatedWallet", 0) or 0),
+            }
+    return None
+
+
+def ensure_margin_mode():
+    if MARGIN_TYPE not in ("cross", "isolated"):
+        log.warning(f"Unknown BINANCE_MARGIN_TYPE={MARGIN_TYPE!r}; use 'cross' or 'isolated'")
+        return
+
+    target = "CROSSED" if MARGIN_TYPE == "cross" else "ISOLATED"
+    result = _request(
+        "POST",
+        "/fapi/v1/marginType",
+        {"symbol": SYMBOL, "marginType": target},
+    )
+    if result.get("success"):
+        log.info(f"Margin mode set to {target} on {SYMBOL}")
+    elif result.get("error", {}).get("code") == -4046:
+        log.info(f"Margin mode already {target} on {SYMBOL}")
+    else:
+        log.error(f"Margin mode set FAILED: {result}")
+
+
 def set_leverage():
     result = _request(
         "POST",
@@ -150,9 +236,62 @@ def set_leverage():
         {"symbol": SYMBOL, "leverage": LEVERAGE},
     )
     if result.get("success"):
-        log.info(f"Leverage set to {LEVERAGE}x on {SYMBOL} — OK")
+        actual = result["result"].get("leverage", LEVERAGE)
+        log.info(f"Leverage set to {actual}x on {SYMBOL} — OK")
     else:
         log.error(f"Leverage set FAILED: {result}")
+
+
+def log_account_diagnostics():
+    log.info(
+        f"Config: symbol={SYMBOL} qty={QUANTITY} leverage={LEVERAGE}x "
+        f"margin={MARGIN_TYPE} base={BASE_URL}"
+    )
+    log.info(f"Env file: {ENV_FILE or 'system env / default load_dotenv()'}")
+    log.info(f"API key configured: {'yes' if API_KEY else 'NO'}")
+
+    balance = get_usdt_balance()
+    margin_info = get_symbol_margin_info()
+    mark_price = get_mark_price()
+
+    if balance is None:
+        log.error(
+            "Could not read futures balance — verify API keys, permissions, "
+            "and that BINANCE_BASE_URL matches your keys (mainnet vs testnet)"
+        )
+        return
+
+    log.info(
+        f"USDT futures wallet={balance['wallet']:.4f} "
+        f"available={balance['available']:.4f}"
+    )
+
+    if margin_info:
+        log.info(
+            f"Exchange reports: leverage={margin_info['leverage']}x "
+            f"marginType={margin_info['margin_type']} "
+            f"isolatedWallet={margin_info['isolated_wallet']:.4f}"
+        )
+        if margin_info["margin_type"] == "isolated" and margin_info["isolated_wallet"] <= 0:
+            log.error(
+                "Symbol is in ISOLATED margin with $0 isolated wallet — "
+                "transfer USDT to isolated margin for this symbol, or set "
+                "BINANCE_MARGIN_TYPE=cross and restart (no open position required)"
+            )
+
+    if mark_price is not None:
+        notional = QUANTITY * mark_price
+        est_margin = notional / max(LEVERAGE, 1)
+        log.info(
+            f"Mark={mark_price:.4f} | order notional≈{notional:.2f} USDT | "
+            f"est. margin needed≈{est_margin:.2f} USDT"
+        )
+        if balance["available"] < est_margin:
+            log.error(
+                f"INSUFFICIENT MARGIN: available {balance['available']:.2f} USDT "
+                f"< estimated need {est_margin:.2f} USDT — transfer USDT to "
+                f"USD-M Futures wallet or lower BINANCE_QUANTITY"
+            )
 
 
 def get_open_position():
@@ -216,13 +355,39 @@ def _normalize_side(side):
 
 def place_market_order(side, size):
     log.info(f"placing order {side} and {size}")
+    is_close = _is_close_order(side)
+    if not is_close:
+        balance = get_usdt_balance()
+        mark_price = get_mark_price()
+        if balance is not None and mark_price is not None:
+            est_margin = (float(size) * mark_price) / max(LEVERAGE, 1)
+            log.info(
+                f"Pre-order check: available={balance['available']:.4f} USDT, "
+                f"est. margin≈{est_margin:.4f} USDT @ {LEVERAGE}x"
+            )
+            if balance["available"] < est_margin:
+                log.error(
+                    f"Skipping likely failed entry — insufficient futures margin "
+                    f"({balance['available']:.2f} < {est_margin:.2f})"
+                )
+                return {
+                    "success": False,
+                    "result": {
+                        "code": -2019,
+                        "msg": (
+                            f"Margin is insufficient. Available {balance['available']:.2f} "
+                            f"USDT, need ~{est_margin:.2f} USDT. Transfer USDT to USD-M Futures."
+                        ),
+                    },
+                }
+
     params = {
         "symbol": SYMBOL,
         "side": _normalize_side(side),
         "type": "MARKET",
         "quantity": _format_quantity(size),
     }
-    if _is_close_order(side):
+    if is_close:
         params["reduceOnly"] = "true"
 
     try:
@@ -397,6 +562,9 @@ def place_sl_with_retry(entry_side, avg_fill_price):
 def startup_check():
     log.info("=== Server started — startup check (Binance) ===")
     _load_symbol_filters()
+    ensure_margin_mode()
+    set_leverage()
+    log_account_diagnostics()
     position = get_open_position()
 
     if not position:

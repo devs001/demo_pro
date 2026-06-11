@@ -11,9 +11,8 @@ class MyappConfig(AppConfig):
         if any(cmd in sys.argv for cmd in ('migrate', 'makemigrations', 'test', 'shell')):
             return
         try:
-            from .broker import set_leverage, startup_check
+            from .broker import startup_check
             startup_check()
-            set_leverage()
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning(
