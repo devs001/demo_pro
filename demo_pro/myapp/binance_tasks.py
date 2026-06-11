@@ -376,6 +376,7 @@ def place_market_order(side, size):
     log.info(f"placing order {side} and {size}")
     is_close = _is_close_order(side)
     if not is_close:
+        #TODO: we can remove  balance checking this to make it faster
         balance = get_usdt_balance()
         mark_price = get_mark_price()
         if balance is not None and mark_price is not None:
