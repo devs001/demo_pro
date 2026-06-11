@@ -326,15 +326,34 @@ def get_open_position():
     return None
 
 
+
+def _normalize_algo_orders(raw):
+    if not raw:
+        return []
+    if isinstance(raw, dict):
+        return [raw]
+    return list(raw)
+
+
+def _get_open_algo_orders():
+    result = _request("GET", "/fapi/v1/openAlgoOrders", {"symbol": SYMBOL})
+    if not result.get("success"):
+        return []
+    return _normalize_algo_orders(result["result"])
+
+
 def sl_exists():
     try:
-        result = _request("GET", "/fapi/v1/openOrders", {"symbol": SYMBOL})
-        if not result.get("success"):
-            return False
+        for order in _get_open_algo_orders():
+            if order.get("orderType") in ("STOP_MARKET", "STOP"):
+                if order.get("algoStatus", "NEW") in ("NEW", "TRIGGERING"):
+                    return True
 
-        for order in result["result"]:
-            if order.get("type") in ("STOP_MARKET", "STOP"):
-                return True
+        result = _request("GET", "/fapi/v1/openOrders", {"symbol": SYMBOL})
+        if result.get("success"):
+            for order in result["result"]:
+                if order.get("type") in ("STOP_MARKET", "STOP"):
+                    return True
     except Exception as exc:
         log.error(f"SL check exception: {exc}")
 
@@ -433,13 +452,23 @@ def place_market_order(side, size):
 def cancel_all_orders(product_id=None):
     """Cancel all open orders for configured symbol (product_id ignored, Delta compat)."""
     log.info(f"cancel all orders for {SYMBOL}")
+    ok = True
     try:
         result = _request("DELETE", "/fapi/v1/allOpenOrders", {"symbol": SYMBOL})
         if result.get("success"):
-            log.info(f"Successfully cancelled all orders for {SYMBOL}")
-            return True
-        log.error(f"Failed to cancel orders: {result}")
-        return False
+            log.info(f"Successfully cancelled regular orders for {SYMBOL}")
+        else:
+            log.error(f"Failed to cancel regular orders: {result}")
+            ok = False
+
+        algo_result = _request("DELETE", "/fapi/v1/algoOpenOrders", {"symbol": SYMBOL})
+        if algo_result.get("success"):
+            log.info(f"Successfully cancelled algo orders for {SYMBOL}")
+        else:
+            log.error(f"Failed to cancel algo orders: {algo_result}")
+            ok = False
+
+        return ok
     except Exception as exc:
         log.error(f"Exception during order cancellation: {exc}")
         return False
@@ -447,16 +476,21 @@ def cancel_all_orders(product_id=None):
 
 def get_pending_stop_orders(product_id=None):
     try:
+        orders = []
+
         result = _request("GET", "/fapi/v1/openOrders", {"symbol": SYMBOL})
         if result.get("success"):
-            orders = result["result"]
-            if orders:
-                log.info(f"Found {len(orders)} pending orders to cancel.")
-            else:
-                log.info("No pending orders found.")
-            return orders
-        log.error(f"Failed to fetch orders: {result}")
-        return []
+            orders.extend(result["result"])
+        else:
+            log.error(f"Failed to fetch regular orders: {result}")
+
+        orders.extend(_get_open_algo_orders())
+
+        if orders:
+            log.info(f"Found {len(orders)} pending orders to cancel.")
+        else:
+            log.info("No pending orders found.")
+        return orders
     except Exception as exc:
         log.error(f"Exception checking for orders: {exc}")
         return []
@@ -472,7 +506,23 @@ def cancel_all_orders_order_id(product_id=None):
 
     all_successful = True
     for order in pending_orders:
+        algo_id = order.get("algoId")
         order_id = order.get("orderId")
+
+        if algo_id:
+            log.info(f"Targeting algo order ID: {algo_id}...")
+            try:
+                result = _request("DELETE", "/fapi/v1/algoOrder", {"algoId": algo_id})
+                if result.get("success"):
+                    log.info(f"Successfully killed algo order ID {algo_id}")
+                else:
+                    log.error(f"Failed to kill algo order ID {algo_id}: {result}")
+                    all_successful = False
+            except Exception as exc:
+                log.error(f"Exception killing algo order {algo_id}: {exc}")
+                all_successful = False
+            continue
+
         if not order_id:
             continue
 
@@ -518,19 +568,19 @@ def stop_loss_in_percent(entry_price, entry_side, sl_percent=1.0):
 def place_sl_order(entry_side, sl_price):
     sl_side = "sell" if entry_side == "buy" else "buy"
     params = {
+        "algoType": "CONDITIONAL",
         "symbol": SYMBOL,
         "side": _normalize_side(sl_side),
         "type": "STOP_MARKET",
-        "stopPrice": str(_round_price(sl_price)),
-        "quantity": _format_quantity(QUANTITY),
-        "reduceOnly": "true",
+        "triggerPrice": str(_round_price(sl_price)),
+        "closePosition": "true",
         "workingType": "CONTRACT_PRICE",
     }
 
     try:
-        result = _request("POST", "/fapi/v1/order", params)
+        result = _request("POST", "/fapi/v1/algoOrder", params)
         if result.get("success"):
-            log.info(f"SL order @ {sl_price} | Response: {result['result']}")
+            log.info(f"SL algo order @ {sl_price} | Response: {result['result']}")
             return {"success": True, "result": result["result"]}
         log.error(f"SL order failed: {result}")
         return {"success": False, "result": result.get("error")}
