@@ -129,7 +129,7 @@ class WebhookView(APIView):
         if not verify_webhook(request):
             return Response({"error": "Unauthorized"})
         try:
-            data        = request.data
+            data        = request.query_params
             signal_type = data.get("type")
 
             log.info(f"Signal received: {data}")
