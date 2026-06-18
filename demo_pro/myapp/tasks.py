@@ -7,7 +7,9 @@ from datetime import timedelta
 from .models import Subscription, Invoice
 import logging
 
+# Use Django's logging configuration. Define both names used in this module.
 logger = logging.getLogger(__name__)
+log = logger
 
 @shared_task
 def create_invoice_for_subscription(subscription_id):
@@ -126,9 +128,6 @@ import hmac
 import hashlib
 import time
 import json
-import logging
-
-
 
 
 from dotenv import load_dotenv
@@ -161,18 +160,8 @@ PIP_VALUE   = float(os.environ.get("PIP_VALUE", "0.0001"))
 
 BASE_URL = "https://api.india.delta.exchange"
 
-# ============================================================
-# Logging — har cheez record hogi trading.log mein
-# ============================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    handlers=[
-        logging.FileHandler("trading.log"),
-        logging.StreamHandler()
-    ]
-)
-log = logging.getLogger(__name__)
+
+# Note: logging is handled by Django settings. This module uses the configured loggers.
 
 
 # ============================================================

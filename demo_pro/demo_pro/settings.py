@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 from decouple import config
 
@@ -133,7 +134,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 
-
 # Celery Configuration
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
@@ -160,21 +160,44 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# Logging configuration: write trading.log into a dedicated logs directory
+LOG_DIR = os.environ.get('LOG_DIR')
+if LOG_DIR:
+    LOG_DIR = Path(LOG_DIR)
+else:
+    LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '%(asctime)s | %(levelname)s | %(name)s | %(message)s'
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'default',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'formatter': 'default',
+            'filename': str(LOG_DIR / 'trading.log'),
+            'when': 'midnight',
+            'backupCount': 7,
+            'encoding': 'utf-8',
         },
     },
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'file'],
         'level': 'INFO',  # Change to DEBUG if you want to see absolutely everything
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
         },
