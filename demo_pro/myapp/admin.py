@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Plan, Subscription, Invoice
+from .models import Plan, Subscription, Invoice, BuyCall
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
@@ -20,3 +20,11 @@ class InvoiceAdmin(admin.ModelAdmin):
     list_filter = ['status', 'plan', 'issue_date']
     search_fields = ['invoice_number', 'user__username', 'user__email']
     readonly_fields = ['id', 'invoice_number', 'issue_date']
+
+
+@admin.register(BuyCall)
+class BuyCallAdmin(admin.ModelAdmin):
+    list_display = ['symbol', 'quantity', 'fill_price', 'order_id', 'created_at']
+    list_filter = ['symbol', 'created_at']
+    search_fields = ['symbol', 'order_id']
+    readonly_fields = ['created_at']

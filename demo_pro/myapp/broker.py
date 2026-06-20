@@ -16,6 +16,7 @@ BROKER = os.environ.get("EXCHANGE_BROKER", "binance").strip().lower()
 if BROKER == "delta":
     from .tasks import (  # noqa: F401
         QUANTITY,
+        SYMBOL,
         cancel_all_orders,
         cancel_all_orders_order_id,
         get_open_position,
@@ -29,6 +30,7 @@ if BROKER == "delta":
 elif BROKER == "binance":
     from .binance_tasks import (  # noqa: F401
         QUANTITY,
+        SYMBOL,
         cancel_all_orders,
         cancel_all_orders_order_id,
         get_open_position,

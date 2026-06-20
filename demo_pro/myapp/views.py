@@ -30,6 +30,13 @@ from .broker import (
     QUANTITY,
     cancel_all_orders_order_id,
 )
+from .trading_limits import (
+    MAX_BUYS_PER_HOUR,
+    WINDOW_MINUTES,
+    can_place_buy,
+    count_recent_buys,
+    record_buy,
+)
 import stripe
 from django.conf import settings
 
@@ -148,6 +155,34 @@ class WebhookView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+                # ----------------------------------------------------------
+                # Buy-call throttle: max MAX_BUYS_PER_HOUR buys per rolling
+                # WINDOW_MINUTES. Checked before any order (buy OR sell) so we
+                # always know how many buys are live in the window.
+                # ----------------------------------------------------------
+                recent_buys = count_recent_buys()
+                log.info(
+                    f"Buy check before {side}: {recent_buys}/{MAX_BUYS_PER_HOUR} "
+                    f"buys in the last {WINDOW_MINUTES}m"
+                )
+
+                if side == "buy" and not can_place_buy():
+                    log.warning(
+                        f"Buy rejected — {recent_buys}/{MAX_BUYS_PER_HOUR} buys "
+                        f"already placed in the last {WINDOW_MINUTES}m"
+                    )
+                    return Response(
+                        {
+                            "status": "throttled",
+                            "reason": (
+                                f"buy limit reached: {recent_buys}/"
+                                f"{MAX_BUYS_PER_HOUR} in last {WINDOW_MINUTES}m"
+                            ),
+                            "recent_buys": recent_buys,
+                            "limit": MAX_BUYS_PER_HOUR,
+                        }
+                    )
+
                 position = get_open_position()
                 if position:
                     current_side = "buy" if float(position["size"]) > 0 else "sell"
@@ -178,6 +213,20 @@ class WebhookView(APIView):
 
                 place_sl_with_retry(side, avg_fill_price)
 
+                # Record the buy only after a successful fill so failed /
+                # ignored buys never consume the per-hour quota.
+                if side == "buy":
+                    recorded = record_buy(
+                        side,
+                        QUANTITY,
+                        fill_price=avg_fill_price,
+                        order_id=order_result["result"].get("order_id"),
+                    )
+                    log.info(
+                        f"Buy recorded ({count_recent_buys()}/{MAX_BUYS_PER_HOUR} "
+                        f"in last {WINDOW_MINUTES}m) — id={recorded.id if recorded else 'n/a'}"
+                    )
+
                 return Response({"status": "ok", "fill_price": avg_fill_price, "side": side})
 
             # ----------------------------------------------------------
@@ -189,6 +238,13 @@ class WebhookView(APIView):
                 if not position:
                     log.info("Exit signal — no open position, skipping")
                     return Response({"status": "skipped", "reason": "no open position"})
+
+                # Informational: log how many buys are live before closing.
+                # Exits are never throttled.
+                log.info(
+                    f"Buy check before exit: {count_recent_buys()}/{MAX_BUYS_PER_HOUR} "
+                    f"buys in last {WINDOW_MINUTES}m"
+                )
 
                 close_side = "sell" if float(position["size"]) > 0 else "buy"
                 result     = place_market_order(close_side, QUANTITY)
