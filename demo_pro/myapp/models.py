@@ -110,3 +110,25 @@ class Invoice(models.Model):
         self.status = 'paid'
         self.paid_date = timezone.now()
         self.save()
+
+
+class BuyCall(models.Model):
+    """
+    Records every successfully filled BUY entry so we can cap the number of
+    buys placed inside a rolling time window (see trading_limits.py).
+    Broker-agnostic — kept in the Django layer, not in binance_tasks/tasks.
+    """
+    symbol = models.CharField(max_length=20, db_index=True)
+    quantity = models.FloatField()
+    fill_price = models.FloatField(null=True, blank=True)
+    order_id = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return (
+            f"{self.symbol} buy {self.quantity} @ {self.fill_price} "
+            f"({self.created_at:%Y-%m-%d %H:%M:%S})"
+        )

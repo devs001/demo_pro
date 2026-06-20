@@ -150,6 +150,9 @@ PRODUCT_ID  = int(os.environ.get("DELTA_PRODUCT_ID", "0"))
 QUANTITY    = int(os.environ.get("DELTA_QUANTITY", "10"))
 LEVERAGE    = int(os.environ.get("DELTA_LEVERAGE", "10"))
 
+# Symbol string for record-keeping / throttling scoping (mirrors Binance).
+SYMBOL      = os.environ.get("DELTA_SYMBOL", str(PRODUCT_ID))
+
 SL_PIPS     = int(os.environ.get("SL_PIPS", "25"))
 PIP_VALUE   = float(os.environ.get("PIP_VALUE", "0.0001"))
 
